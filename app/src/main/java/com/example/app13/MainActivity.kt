@@ -415,3 +415,5 @@ fun LocationSatisfactionHandler()
         )
     }
 }
+
+//TEST
