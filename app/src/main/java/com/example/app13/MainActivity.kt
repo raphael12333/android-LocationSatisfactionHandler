@@ -8,7 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.IntentSender
-import android.content.res.Configuration
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Bundle
@@ -24,7 +23,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -43,7 +41,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.edit
@@ -113,26 +110,14 @@ class MainActivity : ComponentActivity()
     }
 }
 
-@Preview(
-    uiMode = Configuration.UI_MODE_NIGHT_NO,
-    showSystemUi = true,
-    device = "id:pixel_8",
-    apiLevel = 33 // To remove "Layout fidelity warning" in IDE
-)
 @Composable
 fun Content()
 {
     App13Theme {
-        Scaffold(modifier = Modifier.fillMaxSize())
-        { innerPadding ->
-            Box(modifier = Modifier
-                .padding(innerPadding)
-                .consumeWindowInsets(innerPadding)
-                .fillMaxSize()
-            )
+        Scaffold { innerPadding ->
+            Box(modifier = Modifier.padding(innerPadding))
             {
-                Column(modifier = Modifier.fillMaxSize())
-                {
+                Column {
                     LocationSatisfactionHandler()
                 }
             }
@@ -170,16 +155,16 @@ fun LocationSatisfactionHandler()
         if (fineLocationPermissionState.status.shouldShowRationale)
         {
             // User has denied the permission but the rationale can be shown
+            Log.d("check--", "User has denied the permission but the rationale can be shown")
             onResult(true)
         }
         else
         {
-            // First time the user lands on this feature, or doesn't want to be asked again for this permission
             /*
-            This permissions wrapper is built on top of the available Android platform APIs. We cannot extend the platform's capabilities.
-            For example, it's not possible to differentiate between the it's the first time requesting the permission vs the user doesn't want to be asked again use cases.
-            See https://google.github.io/accompanist/permissions/
+            It's either the first time requesting the permission, either the user chose not to be asked again.
+            See https://google.github.io/accompanist/permissions/#limitations
             */
+            Log.d("check--", "either the first time requesting the permission, either the user chose not to be asked again")
 
             coroutineScope.launch {
                 val locationAccessAskCount = context.dataStore.data.map { preferences ->
@@ -208,7 +193,7 @@ fun LocationSatisfactionHandler()
     // CHECK IF LOCATION IS ENABLED AND PERMISSION TOO
     Log.d("check--", "CHECK IF LOCATION IS ENABLED AND PERMISSION TOO")
     readyToReceiveLocation = isLocationEnabled && fineLocationPermissionState.status.isGranted
-    if (readyToReceiveLocation || isPreview)
+    if (readyToReceiveLocation)
     {
         // READY TO RECEIVE LOCATION UPDATES
         Log.d("check--", "READY TO RECEIVE LOCATION UPDATES")
@@ -295,20 +280,21 @@ fun LocationSatisfactionHandler()
         }
     )
 
-    // DETECT WHEN PRECISE PERM IS/BECOMES NOT GRANTED
+    // REACT TO PERMISSION CURRENT STATE/CHANGE
     LaunchedEffect(fineLocationPermissionState.status, coarseLocationPermissionState.status)
     {
-        Log.d("check--", "DETECT WHEN PRECISE PERM IS/BECOMES NOT GRANTED")
+        Log.d("check--", "REACT TO PERMISSION CURRENT STATE/CHANGE")
         displayButtonSatisfyLocation = !fineLocationPermissionState.status.isGranted
     }
 
-    // REACT TO LOCATION ACTIVATION / DEACTIVATION
+    // REACT TO LOCATION CURRENT STATE/CHANGE
     LaunchedEffect(isLocationEnabled)
     {
-        Log.d("check--", "REACT TO LOCATION ACTIVATION / DEACTIVATION")
+        Log.d("check--", "REACT TO LOCATION CURRENT STATE/CHANGE")
 
         if (isLocationEnabled)
         {
+            Log.d("check--", "LOCATION IS ENABLED")
             displayButtonSatisfyLocation = !fineLocationPermissionState.status.isGranted
         }
         else
@@ -317,6 +303,7 @@ fun LocationSatisfactionHandler()
                 .addOnFailureListener { exception ->
                     if (exception is ResolvableApiException)
                     {
+                        Log.d("check--", "LOCATION IS NOT ENABLED, STORE exception")
                         resolvableExceptionEnableLoc = exception
                         displayButtonSatisfyLocation = true
                     }
@@ -331,9 +318,9 @@ fun LocationSatisfactionHandler()
     // SHOW BUTTON TO INITIATE LOCATION SATISFACTION
     if (displayButtonSatisfyLocation)
     {
+        Log.d("check--", "SHOW BUTTON TO INITIATE LOCATION SATISFACTION")
         Column(
-            modifier = Modifier
-                .fillMaxSize(),
+            modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         )
@@ -348,7 +335,7 @@ fun LocationSatisfactionHandler()
                         {
                             // SHOW DIALOG ASK ENABLE LOCATION
                             resolvableExceptionEnableLoc?.let {
-                                Log.d("check--", "SHOW DIALOG ASK ENABLE LOCATION")
+                                Log.d("check--", "SHOW DIALOG ASK ENABLE LOCATION (use exception)")
                                 val intentSenderRequest = IntentSenderRequest.Builder(it.resolution.intentSender).build()
                                 launcherResultLocationActivationRequest.launch(intentSenderRequest)
                             }
@@ -381,12 +368,8 @@ fun LocationSatisfactionHandler()
                         }
                     }
                 },
-                modifier = Modifier
-                    .padding(top = 12.dp)
-            )
-            {
-                Text(text = "Start")
-            }
+                modifier = Modifier.padding(top = 12.dp)
+            ) { Text(text = "Start") }
         }
     }
 
@@ -395,25 +378,24 @@ fun LocationSatisfactionHandler()
     {
         AlertDialog(
             onDismissRequest =
-            {
-                showAlertDialog = false
-            },
-            confirmButton =
-            {
-                Button(
-                    onClick =
-                    {
-                        showAlertDialog = false
-                        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
-                    }
-                )
                 {
-                    Text("Open")
+                    showAlertDialog = false
+                },
+            confirmButton =
+                {
+                    Button(
+                        onClick =
+                            {
+                                showAlertDialog = false
+                                context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+                            }
+                    )
+                    { Text("Open") }
+                },
+            text =
+                {
+                    Text(text = alertDialogText, fontSize = 20.sp)
                 }
-            },
-            text = { Text(text = alertDialogText, fontSize = 20.sp) }
         )
     }
 }
-
-//TEST
