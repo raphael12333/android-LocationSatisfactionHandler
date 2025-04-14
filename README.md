@@ -10,6 +10,6 @@ an other objective is to increase my motivation to make this source code efficie
 ___
 This repo project is a "part" of a (closed source, commercial purpose) meeting/chat app i'm making
 
-This app part handles making the user enable location, and giving access to the precise location permission
+## This app part handles making the user enable location, and giving access to the precise location permission
 
 I want to use "best"/modern solutions, except when they are not recommended, I use Kotlin and Compose
