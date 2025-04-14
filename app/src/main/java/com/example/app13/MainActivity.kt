@@ -85,8 +85,6 @@ val locationCallback = object : LocationCallback()
     {
         locationResult.locations.forEach { location ->
             Log.d("check--", "Latitude: ${location.latitude}, Longitude: ${location.longitude}")
-
-            Log.d("check--", "Latitude: ${location.latitude}, Longitude: ${location.longitude}")
         }
     }
 }
