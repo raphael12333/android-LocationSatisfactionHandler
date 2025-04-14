@@ -40,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.edit
@@ -132,7 +131,6 @@ fun LocationSatisfactionHandler()
 {
     Log.d("check--", "LocationSatisfactionHandler")
 
-    val isPreview = LocalInspectionMode.current
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -183,12 +181,9 @@ fun LocationSatisfactionHandler()
     }
 
     // CHECK IF LOCATION IS ENABLED
-    if (!isPreview)
-    {
-        Log.d("check--", "CHECK IF LOCATION IS ENABLED")
-        isLocationEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-                locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-    }
+    Log.d("check--", "CHECK IF LOCATION IS ENABLED")
+    isLocationEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+            locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
 
     // CHECK IF LOCATION IS ENABLED AND PERMISSION TOO
     Log.d("check--", "CHECK IF LOCATION IS ENABLED AND PERMISSION TOO")
@@ -200,50 +195,44 @@ fun LocationSatisfactionHandler()
     }
 
     // START/STOP LOCATION UPDATES
-    if (!isPreview)
+    DisposableEffect(readyToReceiveLocation)
     {
-        DisposableEffect(readyToReceiveLocation)
+        if (readyToReceiveLocation)
         {
-            if (readyToReceiveLocation)
-            {
-                Log.d("check--", "START LOCATION UPDATES")
-                fusedLocationClient.requestLocationUpdates(
-                    locationRequest,
-                    locationCallback,
-                    Looper.getMainLooper()
-                )
-            }
-            else
-            {
-                Log.d("check--", "STOP LOCATION UPDATES")
-                fusedLocationClient.removeLocationUpdates(locationCallback)
-            }
-            onDispose {
-                Log.d("check--", "onDispose STOP LOCATION UPDATES")
-                fusedLocationClient.removeLocationUpdates(locationCallback)
-            }
+            Log.d("check--", "START LOCATION UPDATES")
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                Looper.getMainLooper()
+            )
+        }
+        else
+        {
+            Log.d("check--", "STOP LOCATION UPDATES")
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+        }
+        onDispose {
+            Log.d("check--", "onDispose STOP LOCATION UPDATES")
+            fusedLocationClient.removeLocationUpdates(locationCallback)
         }
     }
 
     // CREATE DETECTOR FOR LOCATION TOGGLE
-    if (!isPreview)
+    DisposableEffect(Unit)
     {
-        DisposableEffect(Unit)
+        val locationReceiver = object : BroadcastReceiver()
         {
-            val locationReceiver = object : BroadcastReceiver()
+            override fun onReceive(context: Context?, intent: Intent?)
             {
-                override fun onReceive(context: Context?, intent: Intent?)
-                {
-                    Log.d("check--", "DETECTOR FOR LOCATION TOGGLE onReceive")
-                    isLocationEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-                            locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-                }
+                Log.d("check--", "DETECTOR FOR LOCATION TOGGLE onReceive")
+                isLocationEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                        locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
             }
-            val intentFilter = IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION)
-            context.registerReceiver(locationReceiver, intentFilter)
-            onDispose {
-                context.unregisterReceiver(locationReceiver)
-            }
+        }
+        val intentFilter = IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION)
+        context.registerReceiver(locationReceiver, intentFilter)
+        onDispose {
+            context.unregisterReceiver(locationReceiver)
         }
     }
 
