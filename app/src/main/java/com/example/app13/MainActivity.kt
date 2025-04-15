@@ -143,17 +143,17 @@ fun LocationSatisfactionHandler()
 
     var displayButtonSatisfyLocation by remember { mutableStateOf(false) }
     var alertDialogText by remember { mutableStateOf("") }
-    var showAlertDialog by remember { mutableStateOf(false) }
+    var showAlertDialogGoSettings by remember { mutableStateOf(false) }
 
-    // FUNC TO CHECK IF CAN SHOW PERMISSION DIALOG
+    fun checkIsLocationEnabled(): Boolean
+    {
+        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+    }
     fun locationPermissionRequestDialogWillAppear(onResult: (Boolean) -> Unit)
     {
-        Log.d("check--", "CHECK IF CAN SHOW PERMISSION DIALOG")
-
         if (fineLocationPermissionState.status.shouldShowRationale)
         {
-            // User has denied the permission but the rationale can be shown
-            Log.d("check--", "User has denied the permission but the rationale can be shown")
+            // User has denied the permission but the system dialog can still be shown
             onResult(true)
         }
         else
@@ -162,91 +162,29 @@ fun LocationSatisfactionHandler()
             It's either the first time requesting the permission, either the user chose not to be asked again.
             See https://google.github.io/accompanist/permissions/#limitations
             */
-            Log.d("check--", "either the first time requesting the permission, either the user chose not to be asked again")
-
             coroutineScope.launch {
                 val locationAccessAskCount = context.dataStore.data.map { preferences ->
                     preferences[UserDataKeys.LOCATION_ACCESS_ASK_COUNT] ?: 0
                 }.first()
 
-                onResult(locationAccessAskCount < 2)
+                onResult(locationAccessAskCount < 2) // After two refusals, the system dialog doesn't appear anymore.
             }
         }
     }
-    // FUNC TO ASK GO IN SETTINGS MANUAL ALLOW
-    fun triggerAllowPermissionInSettings()
+    fun triggerRequestAllowManually()
     {
         alertDialogText = "Permission required in Settings"
-        showAlertDialog = true
-    }
-
-    // CHECK IF LOCATION IS ENABLED
-    Log.d("check--", "CHECK IF LOCATION IS ENABLED")
-    isLocationEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-            locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-
-    // CHECK IF LOCATION IS ENABLED AND PERMISSION TOO
-    Log.d("check--", "CHECK IF LOCATION IS ENABLED AND PERMISSION TOO")
-    readyToReceiveLocation = isLocationEnabled && fineLocationPermissionState.status.isGranted
-    if (readyToReceiveLocation)
-    {
-        // READY TO RECEIVE LOCATION UPDATES
-        Log.d("check--", "READY TO RECEIVE LOCATION UPDATES")
-    }
-
-    // START/STOP LOCATION UPDATES
-    DisposableEffect(readyToReceiveLocation)
-    {
-        if (readyToReceiveLocation)
-        {
-            Log.d("check--", "START LOCATION UPDATES")
-            fusedLocationClient.requestLocationUpdates(
-                locationRequest,
-                locationCallback,
-                Looper.getMainLooper()
-            )
-        }
-        else
-        {
-            Log.d("check--", "STOP LOCATION UPDATES")
-            fusedLocationClient.removeLocationUpdates(locationCallback)
-        }
-        onDispose {
-            Log.d("check--", "onDispose STOP LOCATION UPDATES")
-            fusedLocationClient.removeLocationUpdates(locationCallback)
-        }
-    }
-
-    // CREATE DETECTOR FOR LOCATION TOGGLE
-    DisposableEffect(Unit)
-    {
-        val locationReceiver = object : BroadcastReceiver()
-        {
-            override fun onReceive(context: Context?, intent: Intent?)
-            {
-                Log.d("check--", "DETECTOR FOR LOCATION TOGGLE onReceive")
-                isLocationEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-                        locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-            }
-        }
-        val intentFilter = IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION)
-        context.registerReceiver(locationReceiver, intentFilter)
-        onDispose {
-            context.unregisterReceiver(locationReceiver)
-        }
+        showAlertDialogGoSettings = true
     }
 
     // CREATE REACTOR FOR PRECISE PERMISSION DENIED
     val launcherResultLocationActivationRequest = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult(),
-        onResult = { result ->
-            Log.d("check--", "REACTOR FOR PRECISE PERMISSION DENIED onResult")
-            if (result.resultCode == Activity.RESULT_OK)
+        onResult = {
+            if (it.resultCode == Activity.RESULT_OK)
             {
                 if (!fineLocationPermissionState.status.isGranted)
                 {
-                    Log.d("check--", "... !fineLocationPermissionState.status.isGranted")
-
                     locationPermissionRequestDialogWillAppear { willAppear ->
                         if (willAppear)
                         {
@@ -256,12 +194,11 @@ fun LocationSatisfactionHandler()
                                     data[UserDataKeys.LOCATION_ACCESS_ASK_COUNT] = currentCount + 1
                                 }
                             }
-                            Log.d("check--", "... launchPermissionRequest")
                             fineLocationPermissionState.launchPermissionRequest()
                         }
                         else
                         {
-                            triggerAllowPermissionInSettings()
+                            triggerRequestAllowManually()
                         }
                     }
                 }
@@ -269,21 +206,21 @@ fun LocationSatisfactionHandler()
         }
     )
 
-    // REACT TO PERMISSION CURRENT STATE/CHANGE
+    readyToReceiveLocation = checkIsLocationEnabled() && fineLocationPermissionState.status.isGranted
+    isLocationEnabled = checkIsLocationEnabled()
+
     LaunchedEffect(fineLocationPermissionState.status, coarseLocationPermissionState.status)
     {
-        Log.d("check--", "REACT TO PERMISSION CURRENT STATE/CHANGE")
-        displayButtonSatisfyLocation = !fineLocationPermissionState.status.isGranted
+        Log.d("check--", "LaunchedEffect(fineLocationPermissionState.status, coarseLocationPermissionState.status)")
+        // Also check isLocationEnabled in case user disabled Location while permission system rational was shown
+        displayButtonSatisfyLocation = !(fineLocationPermissionState.status.isGranted && isLocationEnabled)
     }
-
-    // REACT TO LOCATION CURRENT STATE/CHANGE
     LaunchedEffect(isLocationEnabled)
     {
-        Log.d("check--", "REACT TO LOCATION CURRENT STATE/CHANGE")
+        Log.d("check--", "LaunchedEffect(isLocationEnabled)")
 
         if (isLocationEnabled)
         {
-            Log.d("check--", "LOCATION IS ENABLED")
             displayButtonSatisfyLocation = !fineLocationPermissionState.status.isGranted
         }
         else
@@ -298,16 +235,57 @@ fun LocationSatisfactionHandler()
                     }
                     else
                     {
-                        Log.d("check--", "not ResolvableApiException, ${exception.message}")
+                        Log.e("check--", "not ResolvableApiException, ${exception.message}")
                     }
                 }
         }
     }
 
-    // SHOW BUTTON TO INITIATE LOCATION SATISFACTION
+    // CREATE DETECTOR FOR LOCATION TOGGLE
+    DisposableEffect(Unit)
+    {
+        Log.d("check--", "DisposableEffect(Unit)")
+
+        val locationReceiver = object : BroadcastReceiver()
+        {
+            override fun onReceive(context: Context?, intent: Intent?)
+            {
+                Log.d("check--", "DETECTOR FOR LOCATION TOGGLE onReceive")
+                isLocationEnabled = checkIsLocationEnabled()
+            }
+        }
+        context.registerReceiver(locationReceiver, IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION))
+        onDispose {
+            Log.d("check--", "onDispose unregisterReceiver")
+            context.unregisterReceiver(locationReceiver)
+        }
+    }
+    DisposableEffect(readyToReceiveLocation)
+    {
+        Log.d("check--", "DisposableEffect(readyToReceiveLocation)")
+
+        if (readyToReceiveLocation)
+        {
+            Log.d("check--", "START LOCATION UPDATES")
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                Looper.getMainLooper()
+            )
+        }
+        else
+        {
+            Log.d("check--", "STOP LOCATION UPDATES IF RUNNING")
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+        }
+        onDispose {
+            Log.d("check--", "onDispose STOP LOCATION UPDATES")
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+        }
+    }
+
     if (displayButtonSatisfyLocation)
     {
-        Log.d("check--", "SHOW BUTTON TO INITIATE LOCATION SATISFACTION")
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
@@ -322,16 +300,16 @@ fun LocationSatisfactionHandler()
                     {
                         try
                         {
-                            // SHOW DIALOG ASK ENABLE LOCATION
+                            // SHOW SYSTEM DIALOG ASK ENABLE LOCATION
+                            Log.d("check--", "USE exception")
                             resolvableExceptionEnableLoc?.let {
-                                Log.d("check--", "SHOW DIALOG ASK ENABLE LOCATION (use exception)")
                                 val intentSenderRequest = IntentSenderRequest.Builder(it.resolution.intentSender).build()
                                 launcherResultLocationActivationRequest.launch(intentSenderRequest)
                             }
                         }
                         catch (e: IntentSender.SendIntentException)
                         {
-                            Log.d("check--", "catch ${e.message}")
+                            Log.e("check--", "catch ${e.message}")
                         }
                     }
                     else
@@ -351,7 +329,7 @@ fun LocationSatisfactionHandler()
                                 }
                                 else
                                 {
-                                    triggerAllowPermissionInSettings()
+                                    triggerRequestAllowManually()
                                 }
                             }
                         }
@@ -362,20 +340,19 @@ fun LocationSatisfactionHandler()
         }
     }
 
-    // SHOW DIALOG TO GO SETTINGS FOR PERM
-    if (showAlertDialog)
+    if (showAlertDialogGoSettings)
     {
         AlertDialog(
             onDismissRequest =
                 {
-                    showAlertDialog = false
+                    showAlertDialogGoSettings = false
                 },
             confirmButton =
                 {
                     Button(
                         onClick =
                             {
-                                showAlertDialog = false
+                                showAlertDialogGoSettings = false
                                 context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
                             }
                     )
@@ -386,5 +363,11 @@ fun LocationSatisfactionHandler()
                     Text(text = alertDialogText, fontSize = 20.sp)
                 }
         )
+    }
+
+    if (readyToReceiveLocation)
+    {
+        // READY TO RECEIVE LOCATION UPDATES
+        Log.d("check--", "READY TO RECEIVE LOCATION UPDATES")
     }
 }
